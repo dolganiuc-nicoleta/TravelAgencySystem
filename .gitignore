@@ -369,3 +369,5 @@ FodyWeavers.xsd
 
 # Local class-diagram notes (UML / rapport) — not tracked
 **/*class-diagram.md
+# Runtime API cache (destination images / hotel search results)
+TravelAgency.Api/cache/
