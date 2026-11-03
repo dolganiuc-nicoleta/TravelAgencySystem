@@ -25,6 +25,12 @@ builder.Services.AddDbContextFactory<TravelAgencyDbContext>(options =>
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient("ImageProxy", http =>
+    {
+        http.Timeout = TimeSpan.FromSeconds(60);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("TravelAgencySystem/1.0 (image-proxy)");
+    })
+    .ConfigurePrimaryHttpMessageHandler(PublicNetworkGuard.CreateHandler);
 
 // Destination media
 builder.Services.AddSingleton<DestinationImagesService>();
@@ -136,9 +142,9 @@ app.MapGet("/api/images/proxy", async (
         return Results.File(cached.Item1, cached.Item2);
     }
 
-    var http = httpFactory.CreateClient();
-    http.Timeout = TimeSpan.FromSeconds(60);
-    http.DefaultRequestHeaders.UserAgent.ParseAdd("TravelAgencySystem/1.0 (image-proxy)");
+    // Named client whose handler refuses private/loopback addresses (SSRF protection).
+    var http = httpFactory.CreateClient("ImageProxy");
+    const long maxImageBytes = 10 * 1024 * 1024;
 
     static Uri NormalizeUnsplashForJpg(Uri u)
     {
@@ -187,7 +193,16 @@ app.MapGet("/api/images/proxy", async (
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, requestUri);
         req.Headers.TryAddWithoutValidation("Accept", "image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5");
-        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (HttpRequestException)
+        {
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+        using var _ = resp;
 
         if ((int)resp.StatusCode == 429 && attempt == 0)
         {
@@ -203,7 +218,26 @@ app.MapGet("/api/images/proxy", async (
         // Important: buffer into memory so the response can be disposed safely.
         // WPF loads images by reading the full response body anyway.
         var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
-        var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
+        if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+            !contentType.StartsWith("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+            return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        if (resp.Content.Headers.ContentLength > maxImageBytes)
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+        byte[] bytes;
+        await using (var body = await resp.Content.ReadAsStreamAsync(ct))
+        using (var buffer = new MemoryStream())
+        {
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await body.ReadAsync(chunk, ct)) > 0)
+            {
+                if (buffer.Length + read > maxImageBytes)
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                buffer.Write(chunk, 0, read);
+            }
+            bytes = buffer.ToArray();
+        }
 
         // If we got an unsupported format (webp/avif), try once more with an Unsplash jpg-normalized URL.
         var ctLower = contentType.ToLowerInvariant();
@@ -241,6 +275,8 @@ app.MapGet("/api/images/proxy", async (
 });
 
 // Debug helper: verify env/config keys are visible to API process (does NOT return the key).
+// Only exposed in Development so a deployed API does not reveal its configuration.
+if (app.Environment.IsDevelopment())
 app.MapGet("/api/debug/keys", (IConfiguration config) =>
 {
     var envUnsplash = Environment.GetEnvironmentVariable("UNSPLASH_ACCESS_KEY") ?? "";
