@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using QuestPDF.Infrastructure;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -38,7 +39,7 @@ namespace TravelAgency.WPF
         private bool _apiStartedByThisApp;
 #endif
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
 
@@ -59,23 +60,32 @@ namespace TravelAgency.WPF
                 // ignore
             }
 
-#if DEBUG
-            // In development we can prevent "port already in use" by spawning/stopping the API together with the WPF app.
-            // If the API is already running, we won't start another instance.
-            TryStartApiForDev();
-#endif
-
             Services = ConfigureServices();
             Mediator = Services.GetRequiredService<IMediator>();
 
-            using (var db = TravelAgencyDbContextFactory.Create())
+            // Network-bound startup work runs off the UI thread so the app never appears frozen.
+            var startupTasks = new List<Task> { Task.Run(InitializeDatabase) };
+#if DEBUG
+            // In development we can prevent "port already in use" by spawning/stopping the API together with the WPF app.
+            // If the API is already running, we won't start another instance.
+            startupTasks.Add(Task.Run(TryStartApiForDev));
+#endif
+            try
             {
-              db.Database.Migrate();
+                await Task.WhenAll(startupTasks);
             }
-
-            var userRepository = new EfUserRepository();
-            var seedService = new UserSeedService(userRepository);
-            seedService.SeedDefaultUsers();
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Aplicația nu se poate conecta la baza de date.\n\n" +
+                    "Verifică șirul de conexiune TravelAgencyDb și variabila de mediu TRAVEL_AGENCY_DB_PASSWORD.\n\n" +
+                    ex.GetBaseException().Message,
+                    "Travel Agency",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                Shutdown(1);
+                return;
+            }
 
             QuestPDF.Settings.License = LicenseType.Community;
 
@@ -85,6 +95,19 @@ namespace TravelAgency.WPF
             var startWindow = ActivatorUtilities.CreateInstance<StartWindow>(Services, Mediator);
             MainWindow = startWindow;
             startWindow.Show();
+        }
+
+        private static void InitializeDatabase()
+        {
+            using (var db = TravelAgencyDbContextFactory.Create())
+            {
+                db.Database.Migrate();
+            }
+
+#if DEBUG
+            // Demo accounts are a development convenience only; they must never exist in a release build.
+            new UserSeedService(Services.GetRequiredService<IUserRepository>()).SeedDefaultUsers();
+#endif
         }
 
         private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

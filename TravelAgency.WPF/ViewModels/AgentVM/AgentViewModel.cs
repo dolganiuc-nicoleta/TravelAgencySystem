@@ -57,8 +57,8 @@ namespace TravelAgency.WPF.ViewModels.AgentVM
             OnPropertyChanged(nameof(ActiveBookingsFilter));
         }
 
-        private readonly RelayCommand _approveBookingCommand;
-        private readonly RelayCommand _rejectBookingCommand;
+        private readonly AsyncRelayCommand _approveBookingCommand;
+        private readonly AsyncRelayCommand _rejectBookingCommand;
         private readonly IUserRepository _userRepository;
         private readonly IBookingRepository _bookingRepository;
         private readonly IBookingApprovalHandler _bookingApprovalChain;
@@ -324,8 +324,8 @@ namespace TravelAgency.WPF.ViewModels.AgentVM
 
             PendingBookings = new ObservableCollection<Booking>();
 
-            _approveBookingCommand = new RelayCommand(ApproveSelectedBooking, () => CanApproveOrRejectBooking());
-            _rejectBookingCommand = new RelayCommand(RejectSelectedBooking, () => CanApproveOrRejectBooking());
+            _approveBookingCommand = new AsyncRelayCommand(ApproveSelectedBookingAsync, () => CanApproveOrRejectBooking());
+            _rejectBookingCommand = new AsyncRelayCommand(RejectSelectedBookingAsync, () => CanApproveOrRejectBooking());
 
             RefreshPendingBookingsCommand = new RelayCommand(LoadPendingRequests);
 
@@ -1126,7 +1126,7 @@ namespace TravelAgency.WPF.ViewModels.AgentVM
             RefreshReportPreview();
         }
 
-        private async void ApproveSelectedBooking()
+        private async Task ApproveSelectedBookingAsync()
         {
             if (SelectedBooking == null)
             {
@@ -1173,7 +1173,7 @@ namespace TravelAgency.WPF.ViewModels.AgentVM
             }
         }
 
-        private async void RejectSelectedBooking()
+        private async Task RejectSelectedBookingAsync()
         {
             if (SelectedBooking == null)
             {
