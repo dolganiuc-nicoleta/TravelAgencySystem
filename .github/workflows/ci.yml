@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    # WPF requires Windows to build.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore TravelAgencySystem.sln
+
+      - name: Build
+        run: dotnet build TravelAgencySystem.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test TravelAgency.Tests --configuration Release --no-build --verbosity normal
