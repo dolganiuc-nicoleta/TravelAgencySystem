@@ -290,8 +290,8 @@ namespace TravelAgency.WPF.ViewModels.AdminVM
             ShowFinancialSettingsCommand = new RelayCommand(ShowFinancialSettingsSection);
             ShowPackageModerationCommand = new RelayCommand(ShowPackageModerationSection);
             RefreshBookingsCommand = new RelayCommand(LoadAdminBookings);
-            ConfirmBookingCommand = new RelayCommand(ConfirmAdminBooking, CanConfirmAdminBooking);
-            RejectBookingCommand = new RelayCommand(RejectAdminBooking, CanRejectAdminBooking);
+            ConfirmBookingCommand = new AsyncRelayCommand(ConfirmAdminBookingAsync, CanConfirmAdminBooking);
+            RejectBookingCommand = new AsyncRelayCommand(RejectAdminBookingAsync, CanRejectAdminBooking);
             CancelBookingCommand = new RelayCommand(CancelAdminBooking, CanCancelAdminBooking);
             LoadDataFromDatabase();
             LoadLiveAnalytics();
@@ -576,10 +576,10 @@ namespace TravelAgency.WPF.ViewModels.AdminVM
 
         private void RaiseBookingCommandStates()
         {
-            if (ConfirmBookingCommand is RelayCommand c1)
+            if (ConfirmBookingCommand is AsyncRelayCommand c1)
                 c1.RaiseCanExecuteChanged();
 
-            if (RejectBookingCommand is RelayCommand c2)
+            if (RejectBookingCommand is AsyncRelayCommand c2)
                 c2.RaiseCanExecuteChanged();
 
             if (CancelBookingCommand is RelayCommand c3)
@@ -684,7 +684,7 @@ namespace TravelAgency.WPF.ViewModels.AdminVM
                    || string.Equals(SelectedBooking.StatusName, "Confirmed", StringComparison.OrdinalIgnoreCase);
         }
 
-        private async void ConfirmAdminBooking()
+        private async Task ConfirmAdminBookingAsync()
         {
             if (SelectedBooking == null)
             {
@@ -724,7 +724,7 @@ namespace TravelAgency.WPF.ViewModels.AdminVM
             }
         }
 
-        private async void RejectAdminBooking()
+        private async Task RejectAdminBookingAsync()
         {
             if (SelectedBooking == null)
             {

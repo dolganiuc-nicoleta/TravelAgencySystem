@@ -1,12 +1,19 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using TravelAgency.Core.Data.Repositories;
 using TravelAgency.Core.Models.Users;
 using TravelAgency.Core.Models.Users.Access;
 
 namespace TravelAgency.Core.Services
 {
+    /// <summary>
+    /// Creates demo accounts for local development. Login is by e-mail, so every demo account needs one.
+    /// </summary>
     public class UserSeedService
     {
+        public const string DemoAgentEmail = "agent1@travelagency.demo";
+        public const string DemoClientEmail = "client1@travelagency.demo";
+
         private readonly IUserRepository _userRepository;
 
         public UserSeedService(IUserRepository userRepository)
@@ -16,32 +23,32 @@ namespace TravelAgency.Core.Services
 
         public void SeedDefaultUsers()
         {
-            var users = _userRepository.GetAll();
+            EnsureUser("agent1", DemoAgentEmail, "Agent123!", "Agent", () => new Agent());
+            EnsureUser("client1", DemoClientEmail, "Client123!", "Client", () => new Client());
+        }
 
-            if (!users.Any(x => x.Username == "agent1"))
+        private void EnsureUser(string username, string email, string password, string roleName, Func<User> create)
+        {
+            var existing = _userRepository.GetAll().FirstOrDefault(x => x.Username == username);
+
+            if (existing == null)
             {
-                var agent = new Agent
-                {
-                    Username = "agent1",
-                    PasswordHash = PasswordHasher.Hash("Agent123!"),
-                    Role = new Role { Name = "Agent" },
-                    Session = new UserSession { IsActive = false }
-                };
+                var user = create();
+                user.Username = username;
+                user.Email = email;
+                user.PasswordHash = PasswordHasher.Hash(password);
+                user.Role = new Role { Name = roleName };
+                user.Session = new UserSession { IsActive = false };
 
-                _userRepository.Add(agent);
+                _userRepository.Add(user);
+                return;
             }
 
-            if (!users.Any(x => x.Username == "client1"))
+            // Accounts seeded by earlier versions had no e-mail and therefore could not log in.
+            if (string.IsNullOrWhiteSpace(existing.Email) && _userRepository.GetByEmail(email) == null)
             {
-                var client = new Client
-                {
-                    Username = "client1",
-                    PasswordHash = PasswordHasher.Hash("Client123!"),
-                    Role = new Role { Name = "Client" },
-                    Session = new UserSession { IsActive = false }
-                };
-
-                _userRepository.Add(client);
+                existing.Email = email;
+                _userRepository.Update(existing);
             }
         }
     }

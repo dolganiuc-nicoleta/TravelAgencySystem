@@ -14,6 +14,7 @@ using TravelAgency.WPF.Messaging.Messages;
 using TravelAgency.WPF.Commands;
 using TravelAgency.WPF.Services.Navigation;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace TravelAgency.WPF.ViewModels
 {
@@ -63,13 +64,13 @@ namespace TravelAgency.WPF.ViewModels
             _navigation = navigation ?? throw new System.ArgumentNullException(nameof(navigation));
             _userRepository = userRepository ?? throw new System.ArgumentNullException(nameof(userRepository));
             _authenticationService = authenticationService ?? throw new System.ArgumentNullException(nameof(authenticationService));
-            LoginCommand = new RelayCommand(Login);
+            LoginCommand = new AsyncRelayCommand(LoginAsync);
             OpenRegisterCommand = new RelayCommand(OpenRegister);
             OpenForgotPasswordCommand = new RelayCommand(OpenForgotPassword);
 
         }
 
-        private void Login()
+        private async Task LoginAsync()
         {
             ErrorMessage = "";
 
@@ -92,16 +93,23 @@ namespace TravelAgency.WPF.ViewModels
 
             try
             {
-                var user = _authenticationService.Authenticate(request.Email, request.Password);
+                // Password hashing and the database round-trips are slow; keep them off the UI thread.
+                var user = await Task.Run(() =>
+                {
+                    var authenticated = _authenticationService.Authenticate(request.Email, request.Password);
+                    if (authenticated != null)
+                    {
+                        authenticated.Login();
+                        _userRepository.Update(authenticated);
+                    }
+                    return authenticated;
+                });
 
                 if (user == null)
                 {
                     ErrorMessage = "Invalid email or password.";
                     return;
                 }
-
-                user.Login();
-                _userRepository.Update(user);
 
                 SessionManager.Instance.CurrentSession.StartSession(user);
 

@@ -17,7 +17,8 @@ namespace TravelAgency.Core.Patterns.Strategy
 
         public decimal CalculatePrice(decimal basePrice, decimal extraCharges = 0)
         {
-            decimal discountedPrice = basePrice - (basePrice * _discountPercent);
+            // Percent convention (10 = 10%), consistent with FullPricingStrategy.
+            decimal discountedPrice = basePrice - (basePrice * _discountPercent / 100m);
             return discountedPrice + extraCharges;
         }
     }

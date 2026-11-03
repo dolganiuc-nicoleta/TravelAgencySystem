@@ -25,6 +25,12 @@ namespace TravelAgency.Core.Services
             if (user.IsBlocked)
                 return null;
 
+            if (PasswordHasher.NeedsRehash(user.PasswordHash))
+            {
+                user.PasswordHash = PasswordHasher.Hash(password);
+                _userRepository.Update(user);
+            }
+
             return user;
         }
     }
